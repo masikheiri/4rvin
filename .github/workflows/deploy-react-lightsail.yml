@@ -1,0 +1,56 @@
+name: Deploy to AWS Lightsail
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Save SSH key
+        env:
+          LIGHTSAIL_KEY: ${{ secrets.LIGHTSAIL_KEY }}
+        run: |
+          echo "$LIGHTSAIL_KEY" > lightsail_key.pem
+          chmod 600 lightsail_key.pem
+
+      - name: Add server to known_hosts
+        env:
+          LIGHTSAIL_IP: ${{ secrets.LIGHTSAIL_IP }}
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H $LIGHTSAIL_IP >> ~/.ssh/known_hosts
+
+      - name: Deploy build files
+        env:
+          LIGHTSAIL_IP: ${{ secrets.LIGHTSAIL_IP }}
+          LIGHTSAIL_USER: ${{ secrets.LIGHTSAIL_USER }}
+        run: |
+          scp -i lightsail_key.pem -rp dist/* \
+          $LIGHTSAIL_USER@$LIGHTSAIL_IP:/home/bitnami/4rvin/
+
+      - name: Restart nginx
+        env:
+          LIGHTSAIL_IP: ${{ secrets.LIGHTSAIL_IP }}
+          LIGHTSAIL_USER: ${{ secrets.LIGHTSAIL_USER }}
+        run: |
+          ssh -i lightsail_key.pem \
+          $LIGHTSAIL_USER@$LIGHTSAIL_IP \
+          "sudo systemctl restart nginx"
